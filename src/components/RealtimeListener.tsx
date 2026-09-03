@@ -3,6 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
+import { toast } from 'sonner'
 
 export function RealtimeListener() {
   const router = useRouter()
@@ -15,15 +16,32 @@ export function RealtimeListener() {
 
     const channel = supabase
       .channel('reports-listener')
-      .on('postgres_changes', 
-          { event: '*', schema: 'public', table: 'metrics' }, 
-          () => {
-            // When the Monday 06:00 AM pipeline finishes writing to DB,
-            // this silently tells Next.js to re-fetch the Server Component data!
-            router.refresh()
+      .on('postgres_changes',
+        { event: '*', schema: 'public' },
+        (payload) => {
+
+          // 1. Ignore if the user manually triggered a refresh via the button
+          if (typeof window !== 'undefined' && sessionStorage.getItem('is_manual_refresh') === 'true') {
+            console.log('Ignoring realtime event due to manual refresh flag.')
+            return
           }
+
+          // 2. Show a deduplicated toast instead of silently rug-pulling the data
+          toast.info('New live data is available', {
+            action: {
+              label: 'Update',
+              onClick: () => router.refresh()
+            },
+            closeButton: true,
+            duration: Infinity,
+            id: 'realtime-update-toast'
+          })
+        }
       )
-      .subscribe()
+      .subscribe((status, err) => {
+        console.log('📡 Supabase Realtime Status:', status)
+        if (err) console.error('Supabase Realtime Error:', err)
+      })
 
     return () => {
       supabase.removeChannel(channel)

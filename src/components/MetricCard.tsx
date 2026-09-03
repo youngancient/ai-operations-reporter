@@ -10,9 +10,10 @@ type TrendStatus = 'improved' | 'declined' | 'stable' | 'insufficient_data'
 
 interface MetricCardProps {
   title: string
-  value: string | number
+  value?: string | number
   trend?: TrendStatus
   trendContext?: string
+  breakdowns?: { label: string, value: string | number }[]
 }
 
 const trendConfig = {
@@ -22,7 +23,7 @@ const trendConfig = {
   insufficient_data: { icon: HelpCircleIcon, color: 'text-amber-500', bg: 'bg-amber-50', ring: 'ring-amber-500/20' },
 }
 
-export function MetricCard({ title, value, trend, trendContext }: MetricCardProps) {
+export function MetricCard({ title, value, trend, trendContext, breakdowns }: MetricCardProps) {
   const config = trend ? trendConfig[trend] : null
   const Icon = config?.icon
 
@@ -31,10 +32,22 @@ export function MetricCard({ title, value, trend, trendContext }: MetricCardProp
       <h3 className="text-sm font-medium text-slate-500 font-inter uppercase tracking-wider truncate">
         {title}
       </h3>
-      <div className="mt-3 flex items-baseline gap-2">
-        <span className="text-4xl font-bold tracking-tight text-slate-900 font-plus-jakarta tabular-nums">
-          {value}
-        </span>
+      <div className="mt-3 flex flex-col gap-2">
+        {value !== undefined && (
+          <span className="text-4xl font-bold tracking-tight text-slate-900 font-plus-jakarta tabular-nums">
+            {value}
+          </span>
+        )}
+        {breakdowns && breakdowns.length > 0 && (
+          <div className="mt-1 space-y-1.5 w-full">
+            {breakdowns.map((b, i) => (
+              <div key={i} className="flex items-center justify-between text-sm">
+                <span className="text-slate-500 font-inter">{b.label}</span>
+                <span className="font-semibold text-slate-900 tabular-nums">{b.value}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
       {trend && config && (
         <div className="mt-4 flex items-center gap-2">

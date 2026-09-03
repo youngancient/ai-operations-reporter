@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { RefreshCw, Loader2, Calendar } from 'lucide-react'
 
@@ -19,6 +19,7 @@ const loadingMessages = [
 
 export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
   const router = useRouter()
+  const [isPending, startTransition] = useTransition()
   const [loading, setLoading] = useState(false)
   const [messageIndex, setMessageIndex] = useState(0)
 
@@ -45,7 +46,9 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
     } else if (val.startsWith('custom_')) {
       // Do nothing, just re-selecting the current custom period
     } else {
-      router.push(`/?period=${val}`)
+      startTransition(() => {
+        router.push(`/?period=${val}`)
+      })
     }
   }
 
@@ -53,6 +56,10 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
     setLoading(true)
     setMessageIndex(0)
     setShowCustomModal(false)
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('is_manual_refresh', 'true')
+    }
 
     try {
       const res = await fetch('/api/generate-report', {
@@ -82,37 +89,64 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
       toast.error(err.message)
     } finally {
       setLoading(false)
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('is_manual_refresh')
+      }
     }
   }
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row items-center gap-3">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto mt-4 sm:mt-0">
         {/* READ: Select Period */}
-        <select
-          value={currentPeriod}
-          onChange={handlePeriodChange}
-          className="rounded-lg border border-slate-300 text-sm font-medium text-slate-700 shadow-sm focus:border-slate-900 focus:ring-slate-900 bg-white py-2.5 px-4 cursor-pointer outline-none transition-all"
-        >
-          <option value="last_30_days">Last 30 Days</option>
-          <option value="last_90_days">Last 90 Days</option>
-          <option value="ytd">Year to Date</option>
-          {currentPeriod.startsWith('custom_') && (
-            <option value={currentPeriod}>
-              Custom ({currentPeriod.replace('custom_', '').replace('_', ' to ')})
-            </option>
+        <div className="relative w-full sm:w-auto">
+          <select
+            value={currentPeriod}
+            onChange={handlePeriodChange}
+            disabled={isPending}
+            className={`w-full sm:w-auto rounded-lg border border-slate-300 text-sm font-medium text-slate-700 shadow-sm focus:border-slate-900 focus:ring-slate-900 bg-white py-2.5 pl-4 pr-10 outline-none transition-all appearance-none ${isPending ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+            style={{ backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.5rem center', backgroundSize: '1em 1em' }}
+          >
+            <option value="last_30_days">Last 30 Days</option>
+            <option value="last_90_days">Last 90 Days</option>
+            <option value="ytd">Year to Date</option>
+            {currentPeriod.startsWith('custom_') && (
+              <option value={currentPeriod}>
+                {(() => {
+                  const parts = currentPeriod.replace('custom_', '').split('_')
+                  if (parts.length === 2) {
+                    const formatDate = (dateStr: string) => {
+                      try {
+                        return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(dateStr))
+                      } catch {
+                        return dateStr
+                      }
+                    }
+                    return `Custom (${formatDate(parts[0])} - ${formatDate(parts[1])})`
+                  }
+                  return currentPeriod
+                })()}
+              </option>
+            )}
+            <option value="custom">Create Custom Range...</option>
+          </select>
+
+          {isPending && (
+            <div className="absolute right-8 top-1/2 -translate-y-1/2 pointer-events-none">
+              <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+            </div>
           )}
-          <option value="custom">Create Custom Range...</option>
-        </select>
+        </div>
 
         {/* WRITE: Generate New Report for current standard period */}
         {!currentPeriod.startsWith('custom') && (
           <button
             onClick={() => generateReport(currentPeriod)}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 transition-all"
+            disabled={isPending}
+            className={`w-full sm:w-auto justify-center inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 transition-all ${isPending ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           >
             <RefreshCw className="h-4 w-4" />
-            Refresh Data
+            Rerun Analysis
           </button>
         )}
       </div>
@@ -136,8 +170,7 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
       {showCustomModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <h3 className="text-lg font-bold text-slate-900 font-plus-jakarta mb-4 flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-slate-500" />
+            <h3 className="text-lg font-bold text-slate-900 font-plus-jakarta mb-4">
               Generate Custom Report
             </h3>
             <div className="space-y-4">
@@ -147,7 +180,8 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                   type="date"
                   value={startDate}
                   onChange={e => setStartDate(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-900 focus:ring-slate-900 sm:text-sm px-3 py-2 border outline-none"
+                  onClick={e => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                  className="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-900 focus:ring-slate-900 sm:text-sm px-3 py-2 border outline-none cursor-pointer"
                 />
               </div>
               <div>
@@ -156,20 +190,21 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                   type="date"
                   value={endDate}
                   onChange={e => setEndDate(e.target.value)}
-                  className="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-900 focus:ring-slate-900 sm:text-sm px-3 py-2 border outline-none"
+                  onClick={e => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
+                  className="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-900 focus:ring-slate-900 sm:text-sm px-3 py-2 border outline-none cursor-pointer"
                 />
               </div>
               <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   onClick={() => setShowCustomModal(false)}
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => generateReport('custom', startDate, endDate)}
                   disabled={!startDate || !endDate}
-                  className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+                  className="px-4 py-2 text-sm font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-sm disabled:opacity-50 transition-colors inline-flex items-center gap-2 cursor-pointer"
                 >
                   <RefreshCw className="h-4 w-4" />
                   Run Analysis

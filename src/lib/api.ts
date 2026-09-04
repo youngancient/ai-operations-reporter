@@ -3,7 +3,7 @@ import type { Metric, AiInsight, DataQualityWarning, WorkflowRun } from './types
 
 export async function getDashboardData(periodKey: string, periodStart?: string, periodEnd?: string) {
   const supabase = await createClient()
-  
+
   // Helper to apply the correct date filter
   const applyPeriodFilter = (query: any) => {
     if (periodKey === 'custom' && periodStart && periodEnd) {
@@ -14,9 +14,9 @@ export async function getDashboardData(periodKey: string, periodStart?: string, 
 
   // Fetch everything in parallel
   const [metricsRes, insightsRes, warningsRes, runsRes] = await Promise.all([
-    applyPeriodFilter(supabase.from('metrics').select('*')),
-    applyPeriodFilter(supabase.from('ai_insights').select('*')),
-    applyPeriodFilter(supabase.from('data_quality_warnings').select('*')),
+    applyPeriodFilter(supabase.from('metrics_current').select('*')),
+    applyPeriodFilter(supabase.from('ai_insights_current').select('*')),
+    applyPeriodFilter(supabase.from('data_quality_warnings_current').select('*')),
     supabase
       .from('workflow_runs')
       .select('*')

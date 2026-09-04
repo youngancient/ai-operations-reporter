@@ -1,8 +1,9 @@
-import { getDashboardData } from '@/lib/api'
+import { getDashboardData, getAvailableCustomPeriods } from '@/lib/api'
 import { MetricCard } from '@/components/MetricCard'
 import { InsightPanel } from '@/components/InsightPanel'
 import { ReportControls } from '@/components/ReportControls'
 import { RealtimeListener } from '@/components/RealtimeListener'
+import { LocalTime } from '@/components/LocalTime'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { AlertCircle, ChevronDown, Clock } from 'lucide-react'
@@ -21,6 +22,7 @@ export default async function Dashboard(props: { searchParams: Promise<{ period?
   const period = searchParams.period || 'last_30_days'
 
   const { metrics, insights, warnings, lastRun } = await getDashboardData(period)
+  const customPeriods = await getAvailableCustomPeriods()
 
   const executiveSummary = insights.find(i => i.insight_type === 'executive_summary')
   const risksInsight = insights.find(i => i.insight_type === 'risks_and_anomalies')
@@ -47,16 +49,15 @@ export default async function Dashboard(props: { searchParams: Promise<{ period?
             <div className="mt-2 flex items-center gap-2 text-sm text-slate-500 font-inter">
               <div className={`h-1.5 w-1.5 rounded-full ${lastRun || metrics.length > 0 ? 'bg-emerald-500 animate-pulse ring-2 ring-emerald-500/20' : 'bg-slate-400 ring-2 ring-slate-400/20'}`}></div>
               {lastRun ? (
-                <span>Last updated <span className="font-medium text-slate-700">{new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(lastRun.run_timestamp))}</span></span>
+                <span>Last updated <span className="font-medium text-slate-700"><LocalTime timestamp={lastRun.run_timestamp} /></span></span>
               ) : metrics.length > 0 ? (
                 'Generating data...'
               ) : (
                 'No data available'
-              )}
-            </div>
+              )}</div>
           </div>
 
-          <ReportControls currentPeriod={period} />
+          <ReportControls currentPeriod={period} customPeriods={customPeriods} />
         </header>
 
         {warnings.length > 0 && (

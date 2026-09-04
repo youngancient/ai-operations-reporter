@@ -32,3 +32,24 @@ export async function getDashboardData(periodKey: string, periodStart?: string, 
     lastRun: (runsRes.data?.[0] as WorkflowRun) || null,
   }
 }
+
+export async function getAvailableCustomPeriods() {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('workflow_runs')
+    .select('reporting_period, period_start, period_end, run_timestamp')
+    .like('reporting_period', 'custom_%')
+    .order('run_timestamp', { ascending: false })
+
+  const seen = new Set<string>()
+  const uniquePeriods: WorkflowRun[] = []
+  if (data) {
+    for (const run of data) {
+      if (!seen.has(run.reporting_period)) {
+        seen.add(run.reporting_period)
+        uniquePeriods.push(run as WorkflowRun)
+      }
+    }
+  }
+  return uniquePeriods
+}

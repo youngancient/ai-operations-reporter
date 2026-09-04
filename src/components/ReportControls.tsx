@@ -17,7 +17,7 @@ const loadingMessages = [
 ]
 
 
-export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
+export function ReportControls({ currentPeriod, customPeriods = [] }: { currentPeriod: string, customPeriods?: any[] }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [loading, setLoading] = useState(false)
@@ -27,6 +27,15 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
   const [showCustomModal, setShowCustomModal] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+
+  const REFERENCE_DATE = '2026-06-30'
+
+  const getOffsetDay = (dateString: string, offset: number) => {
+    if (!dateString) return '';
+    const [y, m, d] = dateString.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d + offset));
+    return date.toISOString().split('T')[0];
+  }
 
   // Sequence the loading messages every 5s to keep the user engaged
   useEffect(() => {
@@ -43,8 +52,6 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
     const val = e.target.value
     if (val === 'custom') {
       setShowCustomModal(true)
-    } else if (val.startsWith('custom_')) {
-      // Do nothing, just re-selecting the current custom period
     } else {
       startTransition(() => {
         router.push(`/?period=${val}`)
@@ -117,7 +124,7 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                   if (parts.length === 2) {
                     const formatDate = (dateStr: string) => {
                       try {
-                        return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(dateStr))
+                        return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(dateStr))
                       } catch {
                         return dateStr
                       }
@@ -128,7 +135,7 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                 })()}
               </option>
             )}
-            <option value="custom">Create Custom Range...</option>
+            <option value="custom">Select Custom Range...</option>
           </select>
 
           {isPending && (
@@ -138,17 +145,24 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
           )}
         </div>
 
-        {/* WRITE: Generate New Report for current standard period */}
-        {!currentPeriod.startsWith('custom') && (
-          <button
-            onClick={() => generateReport(currentPeriod)}
-            disabled={isPending}
-            className={`w-full sm:w-auto justify-center inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 transition-all ${isPending ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Rerun Analysis
-          </button>
-        )}
+        {/* WRITE: Generate New Report for current period */}
+        <button
+          onClick={() => {
+            if (currentPeriod.startsWith('custom_')) {
+              const parts = currentPeriod.replace('custom_', '').split('_')
+              if (parts.length === 2) {
+                generateReport('custom', parts[0], parts[1])
+                return
+              }
+            }
+            generateReport(currentPeriod)
+          }}
+          disabled={isPending}
+          className={`w-full sm:w-auto justify-center inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 transition-all ${isPending ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+        >
+          <RefreshCw className="h-4 w-4" />
+          Rerun Analysis
+        </button>
       </div>
 
       {/* Progressive Loading Overlay */}
@@ -179,7 +193,15 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                 <input
                   type="date"
                   value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
+                  max={getOffsetDay(REFERENCE_DATE, -1)}
+                  onChange={e => {
+                    const newStart = e.target.value;
+                    setStartDate(newStart);
+                    const minEnd = getOffsetDay(newStart, 1);
+                    if (endDate && minEnd && endDate < minEnd) {
+                      setEndDate(minEnd);
+                    }
+                  }}
                   onClick={e => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
                   className="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-900 focus:ring-slate-900 sm:text-sm px-3 py-2 border outline-none cursor-pointer"
                 />
@@ -189,6 +211,8 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                 <input
                   type="date"
                   value={endDate}
+                  min={getOffsetDay(startDate, 1) || undefined}
+                  max={REFERENCE_DATE}
                   onChange={e => setEndDate(e.target.value)}
                   onClick={e => (e.target as HTMLInputElement).showPicker && (e.target as HTMLInputElement).showPicker()}
                   className="block w-full rounded-md border-slate-300 shadow-sm focus:border-slate-900 focus:ring-slate-900 sm:text-sm px-3 py-2 border outline-none cursor-pointer"
@@ -210,6 +234,44 @@ export function ReportControls({ currentPeriod }: { currentPeriod: string }) {
                   Run Analysis
                 </button>
               </div>
+
+              {customPeriods.length > 0 && (
+                <div className="mt-8 pt-6 border-t border-slate-200">
+                  <h4 className="text-sm font-semibold text-slate-900 mb-3 font-plus-jakarta">Or select a recent custom report:</h4>
+                  <div className="flex flex-col gap-2 max-h-[160px] overflow-y-auto custom-scrollbar pr-2">
+                    {customPeriods.map(cp => {
+                      const parts = cp.reporting_period.replace('custom_', '').split('_')
+                      let label = cp.reporting_period
+                      if (parts.length === 2) {
+                        const formatDate = (dateStr: string) => {
+                          try {
+                            return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(dateStr))
+                          } catch {
+                            return dateStr
+                          }
+                        }
+                        label = `${formatDate(parts[0])} - ${formatDate(parts[1])}`
+                      }
+
+                      return (
+                        <button
+                          key={cp.reporting_period}
+                          onClick={() => {
+                            setShowCustomModal(false)
+                            startTransition(() => {
+                              router.push(`/?period=${cp.reporting_period}`)
+                            })
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-md hover:bg-slate-50 border border-transparent hover:border-slate-200 text-sm text-slate-700 font-medium transition-all cursor-pointer flex justify-between items-center group"
+                        >
+                          <span>{label}</span>
+                          <span className="text-xs text-slate-400 group-hover:text-slate-600">View Data &rarr;</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
